@@ -1,0 +1,9 @@
+
+{
+  "name": "Ephemera",
+  "description": "A minimal, monochrome bookmark management application with smart metadata fetching and detailed analytics.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
