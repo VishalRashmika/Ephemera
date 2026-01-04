@@ -106,7 +106,7 @@ Select multiple bookmarks to:
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/yourusername/ephemera.git
+   git clone https://github.com/VishalRashmika/Ephemera.git
    cd ephemera
    ```
 
@@ -257,6 +257,7 @@ If you have any questions or run into issues:
 
 <div align="center">
   <p>Made with ❤️ for bookmark hoarders everywhere</p>
+  <p><em>This is a vibe coded project ✨</em></p>
   <p>
     <a href="https://github.com/yourusername/ephemera">⭐ Star us on GitHub</a> •
     <a href="https://github.com/yourusername/ephemera/issues">🐛 Report Bug</a> •

@@ -154,7 +154,7 @@ For better query performance, create these composite indexes:
 ### Step 1: Clone the Repository
 
 ```bash
-git clone https://github.com/yourusername/ephemera.git
+git clone https://github.com/VishalRashmika/Ephemera.git
 cd ephemera
 ```
 
@@ -362,7 +362,7 @@ services:
 2. **Clone and build**:
    ```bash
    cd /var/www
-   git clone https://github.com/yourusername/ephemera.git
+   git clone https://github.com/VishalRashmika/Ephemera.git
    cd ephemera
    npm install
    npm run build
@@ -481,7 +481,7 @@ If you encounter issues:
 
 1. Check the [main README](README.md) for general setup
 2. Review [Firebase Setup Guide](FIREBASE_SETUP.md)
-3. Open an issue on [GitHub](https://github.com/yourusername/ephemera/issues)
+3. Open an issue on [GitHub](https://github.com/VishalRashmika/Ephemera/issues)
 
 ---
 

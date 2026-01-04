@@ -30,12 +30,19 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChange((user) => {
-      setCurrentUser(user);
-      setLoading(false);
-    });
+    try {
+      const unsubscribe = onAuthStateChange((user) => {
+        setCurrentUser(user);
+        setLoading(false);
+      });
 
-    return unsubscribe;
+      return unsubscribe;
+    } catch (error) {
+      console.error('Firebase auth initialization error:', error);
+      // Even if Firebase fails, we should still render the app
+      setLoading(false);
+      return () => {};
+    }
   }, []);
 
   const handleSignInWithGoogle = async () => {

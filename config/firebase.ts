@@ -14,6 +14,13 @@ const firebaseConfig = {
   measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID
 };
 
+// Check if Firebase is configured
+const isConfigured = Object.values(firebaseConfig).every(value => value !== undefined);
+
+if (!isConfigured) {
+  console.warn('Firebase is not configured. Please create a .env file with your Firebase credentials. See .env.example for reference.');
+}
+
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 

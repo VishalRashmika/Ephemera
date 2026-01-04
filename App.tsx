@@ -6,6 +6,9 @@ import Bookmarks from './pages/Bookmarks';
 import BulkEdit from './pages/BulkEdit';
 import Settings from './pages/Settings';
 import Landing from './pages/Landing';
+import About from './pages/About';
+import Features from './pages/Features';
+import Extension from './pages/Extension';
 import { Bookmark, Category } from './types';
 import { X, Link as LinkIcon, Sparkles, Loader2, Plus } from 'lucide-react';
 import { fetchUrlMetadata } from './services/geminiService';
@@ -14,8 +17,8 @@ import { addBookmark as saveBookmarkToFirestore, getUserBookmarks, removeBookmar
 import { addCategory as saveCategoryToFirestore, getUserCategories, removeCategory as deleteCategoryFromFirestore } from './services/categoryService';
 
 const App: React.FC = () => {
-  const { currentUser, logout } = useAuth();
-  const [currentPage, setCurrentPage] = useState('dashboard');
+  const { currentUser, loading, logout } = useAuth();
+  const [currentPage, setCurrentPage] = useState('landing');
   const [isAdding, setIsAdding] = useState(false);
   const [newUrl, setNewUrl] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
@@ -100,6 +103,15 @@ const App: React.FC = () => {
     };
     
     loadCategories();
+  }, [currentUser]);
+
+  // Switch to dashboard when user logs in
+  useEffect(() => {
+    if (currentUser) {
+      setCurrentPage('dashboard');
+    } else {
+      setCurrentPage('landing');
+    }
   }, [currentUser]);
 
   // Update category bookmark counts whenever bookmarks change
@@ -448,8 +460,28 @@ const App: React.FC = () => {
     }
   };
 
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-parchment dark:bg-ink flex items-center justify-center">
+        <div className="text-center space-y-4">
+          <div className="w-16 h-16 bg-navy rounded-2xl flex items-center justify-center mx-auto dark:bg-teal animate-pulse">
+            <div className="w-6 h-6 bg-gold rounded-full" />
+          </div>
+          <p className="text-slate dark:text-lightgrey font-medium">Loading Ephemera...</p>
+        </div>
+      </div>
+    );
+  }
+
   if (!currentUser) {
-    return <Landing />;
+    return (
+      <>
+        {currentPage === 'landing' && <Landing onGetStarted={() => {}} onNavigate={setCurrentPage} />}
+        {currentPage === 'about' && <About onBack={() => setCurrentPage('landing')} onNavigate={setCurrentPage} />}
+        {currentPage === 'features' && <Features onBack={() => setCurrentPage('landing')} onNavigate={setCurrentPage} />}
+        {currentPage === 'extension' && <Extension onBack={() => setCurrentPage('landing')} onNavigate={setCurrentPage} />}
+      </>
+    );
   }
 
   return (

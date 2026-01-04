@@ -5,9 +5,10 @@ import { useAuth } from '../contexts/AuthContext';
 
 interface LandingProps {
   onGetStarted?: () => void;
+  onNavigate: (page: string) => void;
 }
 
-const Landing: React.FC<LandingProps> = ({ onGetStarted }) => {
+const Landing: React.FC<LandingProps> = ({ onGetStarted, onNavigate }) => {
   const { signInWithGoogle, signInWithEmail, signUpWithEmail } = useAuth();
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [isSignUp, setIsSignUp] = useState(false);
@@ -73,9 +74,9 @@ const Landing: React.FC<LandingProps> = ({ onGetStarted }) => {
           <span className="font-bold text-xl tracking-tight">Ephemera</span>
         </div>
         <div className="hidden md:flex items-center gap-8 text-sm font-medium text-slate dark:text-lightgrey">
-          <a href="#" className="hover:text-navy dark:hover:text-teal transition-colors">Features</a>
-          <a href="#" className="hover:text-navy dark:hover:text-teal transition-colors">Pricing</a>
-          <a href="#" className="hover:text-navy dark:hover:text-teal transition-colors">About</a>
+          <button onClick={() => onNavigate('features')} className="hover:text-navy dark:hover:text-teal transition-colors">Features</button>
+          <button onClick={() => onNavigate('extension')} className="hover:text-navy dark:hover:text-teal transition-colors">Extension</button>
+          <button onClick={() => onNavigate('about')} className="hover:text-navy dark:hover:text-teal transition-colors">About</button>
         </div>
         <button 
           onClick={() => setShowAuthModal(true)}
@@ -142,9 +143,7 @@ const Landing: React.FC<LandingProps> = ({ onGetStarted }) => {
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-8">
           <p className="text-slate/60 dark:text-lightgrey/60 text-sm">© 2025 Ephemera Inc. All rights reserved.</p>
           <div className="flex gap-8 text-sm font-medium text-slate dark:text-lightgrey">
-            <a href="#" className="hover:text-navy dark:hover:text-teal transition-colors">Twitter</a>
-            <a href="#" className="hover:text-navy dark:hover:text-teal transition-colors">GitHub</a>
-            <a href="#" className="hover:text-navy dark:hover:text-teal transition-colors">Privacy</a>
+            <a href="https://github.com/VishalRashmika/Ephemera" target="_blank" rel="noopener noreferrer" className="hover:text-navy dark:hover:text-teal transition-colors">GitHub</a>
           </div>
         </div>
       </footer>
