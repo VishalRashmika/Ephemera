@@ -61,6 +61,32 @@ const Settings: React.FC<SettingsProps> = ({
       // Parse different browser export formats
       let bookmarksToImport: Partial<Bookmark>[] = [];
 
+      // Helper function to recursively extract bookmarks from Firefox format
+      const extractFirefoxBookmarks = (item: any): Partial<Bookmark>[] => {
+        const results: Partial<Bookmark>[] = [];
+        
+        // If it's a bookmark (has uri/url)
+        if (item.uri || item.url) {
+          results.push({
+            url: item.uri || item.url,
+            title: item.title || item.name || item.uri || item.url || "",
+            description: item.description || "",
+            tags: item.tags || [],
+            isFavorite: false,
+            isArchived: false,
+          });
+        }
+        
+        // If it has children, recursively process them
+        if (item.children && Array.isArray(item.children)) {
+          item.children.forEach((child: any) => {
+            results.push(...extractFirefoxBookmarks(child));
+          });
+        }
+        
+        return results;
+      };
+
       // Chrome/Edge format (Netscape Bookmark File Format)
       if (typeof data === "string" || data.roots) {
         // Handle HTML bookmark file (Netscape format)
@@ -77,16 +103,13 @@ const Settings: React.FC<SettingsProps> = ({
           isArchived: false,
         }));
       }
-      // Firefox/JSON format
+      // Firefox JSON format (nested structure with children)
+      else if (data.guid && (data.children || data.root)) {
+        bookmarksToImport = extractFirefoxBookmarks(data);
+      }
+      // Simple array format
       else if (Array.isArray(data)) {
-        bookmarksToImport = data.map((item) => ({
-          url: item.url || item.uri || "",
-          title: item.title || item.name || "",
-          description: item.description || "",
-          tags: item.tags || [],
-          isFavorite: false,
-          isArchived: false,
-        }));
+        bookmarksToImport = data.flatMap((item) => extractFirefoxBookmarks(item));
       }
       // Generic JSON object format
       else if (data.bookmarks && Array.isArray(data.bookmarks)) {
