@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useState } from 'react';
 import { 
   LayoutDashboard, 
   Bookmark, 
@@ -12,7 +12,8 @@ import {
   Sun,
   Moon,
   X,
-  Edit3
+  Edit3,
+  User
 } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -30,6 +31,12 @@ interface SidebarProps {
 const Sidebar: React.FC<SidebarProps> = ({ currentPage, onNavigate, categories, selectedCategory, onCategoryClick, onAddCategory, bookmarks }) => {
   const { theme, toggleTheme } = useTheme();
   const { currentUser } = useAuth();
+  const [imageError, setImageError] = useState(false);
+  
+  // Reset image error when user changes
+  React.useEffect(() => {
+    setImageError(false);
+  }, [currentUser?.uid]);
   
   // Calculate top 5 most used tags
   const topTags = React.useMemo(() => {
@@ -151,11 +158,29 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, onNavigate, categories, 
       {/* Fixed Footer */}
       <div className="flex-shrink-0 p-6 border-t border-gold/20 dark:border-steel/30">
         <div className="flex items-center gap-3 px-3 mb-4">
-          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-semibold text-sm">
-            {currentUser?.email?.[0]?.toUpperCase() || 'U'}
+          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-semibold text-sm overflow-hidden ring-2 ring-gold/20 dark:ring-steel/30">
+            {currentUser?.photoURL && !imageError ? (
+              <img 
+                src={currentUser.photoURL} 
+                alt={currentUser.displayName || 'User'}
+                className="w-full h-full object-cover"
+                onError={() => setImageError(true)}
+              />
+            ) : (
+              <span className="flex items-center justify-center w-full h-full">
+                {currentUser?.displayName?.[0]?.toUpperCase() || currentUser?.email?.[0]?.toUpperCase() || 'U'}
+              </span>
+            )}
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium truncate">{currentUser?.email?.split('@')[0] || 'User'}</p>
+            <p className="text-sm font-medium truncate">
+              {currentUser?.displayName || currentUser?.email?.split('@')[0] || 'User'}
+            </p>
+            {currentUser?.displayName && currentUser?.email && (
+              <p className="text-xs text-slate/60 dark:text-lightgrey/60 truncate">
+                {currentUser.email}
+              </p>
+            )}
           </div>
         </div>
         
