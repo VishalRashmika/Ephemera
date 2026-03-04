@@ -11,7 +11,7 @@ import Features from './pages/Features';
 import Extension from './pages/Extension';
 import { Bookmark, Category } from './types';
 import { X, Link as LinkIcon, Sparkles, Loader2, Plus } from 'lucide-react';
-import { fetchUrlMetadata } from './services/geminiService';
+import { fetchUrlMetadata, suggestCategory } from './services/geminiService';
 import { useAuth } from './contexts/AuthContext';
 import { addBookmark as saveBookmarkToFirestore, getUserBookmarks, removeBookmark, toggleBookmarkFavorite, updateBookmark } from './services/bookmarkService';
 import { addCategory as saveCategoryToFirestore, getUserCategories, removeCategory as deleteCategoryFromFirestore } from './services/categoryService';
@@ -23,6 +23,7 @@ const App: React.FC = () => {
   const [newUrl, setNewUrl] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
+  const [isLoadingBookmarks, setIsLoadingBookmarks] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [selectedCategoryForNewBookmark, setSelectedCategoryForNewBookmark] = useState<string | undefined>(undefined);
   const [editingBookmark, setEditingBookmark] = useState<Bookmark | null>(null);
@@ -36,17 +37,54 @@ const App: React.FC = () => {
 
   // Load bookmarks from Firebase
   useEffect(() => {
-    if (!currentUser) return;
+    if (!currentUser) {
+      console.log('No user logged in, skipping bookmark load');
+      setIsLoadingBookmarks(false);
+      return;
+    }
     
     const loadBookmarks = async () => {
+      setIsLoadingBookmarks(true);
       try {
-        console.log('Loading bookmarks for user:', currentUser.uid);
+        console.log('=== Loading Bookmarks ===');
+        console.log('User ID:', currentUser.uid);
+        console.log('User Email:', currentUser.email);
+        
         const userBookmarks = await getUserBookmarks(currentUser.uid);
-        console.log('Loaded bookmarks:', userBookmarks);
+        
+        console.log('✓ Successfully loaded', userBookmarks.length, 'bookmarks');
+        if (userBookmarks.length > 0) {
+          console.log('First 3 bookmarks:', userBookmarks.slice(0, 3).map(b => ({ id: b.id, title: b.title, url: b.url })));
+        }
+        
         setBookmarks(userBookmarks);
       } catch (error) {
-        console.error('Error loading bookmarks:', error);
-        alert('Error loading bookmarks. Please check the browser console for details.');
+        console.error('=== Bookmark Loading Failed ===');
+        console.error('Error:', error);
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        const errorCode = (error as any)?.code;
+        
+        console.error('Error Code:', errorCode);
+        console.error('Error Message:', errorMessage);
+        
+        // Check for permission errors
+        if (errorCode === 'permission-denied') {
+          console.error('');
+          console.error('🔒 PERMISSION DENIED - Firestore Security Rules Issue');
+          console.error('Your Firestore rules may be blocking read access.');
+          console.error('Go to Firebase Console > Firestore Database > Rules');
+          console.error('See FIRESTORE_RULES.md for the correct rules.');
+          console.error('');
+          alert('Permission Denied: Cannot load bookmarks.\n\nYour Firestore security rules may be blocking read access.\n\nPlease check FIRESTORE_RULES.md for the correct rules, or go to Firebase Console > Firestore Database > Rules.');
+        } else {
+          console.error('Failed to load bookmarks:', errorMessage);
+          alert(`Failed to load bookmarks: ${errorMessage}\n\nCheck the browser console for more details.`);
+        }
+        
+        // Set empty bookmarks array instead of leaving it in undefined state
+        setBookmarks([]);
+      } finally {
+        setIsLoadingBookmarks(false);
       }
     };
     
@@ -146,29 +184,55 @@ const App: React.FC = () => {
     if (!newUrl || !currentUser) return;
     setIsProcessing(true);
     try {
-      console.log('Fetching metadata for:', newUrl);
-      const metadata = await fetchUrlMetadata(newUrl);
-      console.log('Metadata fetched:', metadata);
+      let metadata;
       
-      const newBookmarkData = {
+      try {
+        console.log('Fetching metadata for:', newUrl);
+        metadata = await fetchUrlMetadata(newUrl);
+        console.log('Metadata fetched:', metadata);
+      } catch (error: any) {
+        // If AI metadata fails (e.g., no API key), use basic fallback
+        console.log('AI metadata unavailable, using basic extraction:', error.message);
+        const urlObj = new URL(newUrl);
+        const domain = urlObj.hostname;
+        metadata = {
+          title: domain,
+          description: `Bookmark from ${domain}`,
+          favicon: `https://www.google.com/s2/favicons?domain=${domain}&sz=64`,
+          tags: [],
+          domain: domain,
+          image: ''
+        };
+      }
+      
+      const newBookmarkData: any = {
         userId: currentUser.uid,
         url: newUrl,
         title: metadata.title,
         description: metadata.description,
         favicon: metadata.favicon,
-        tags: metadata.tags,
-        categoryId: selectedCategoryForNewBookmark,
+        tags: metadata.tags || [],
         isFavorite: false,
         isArchived: false,
-        metadata: { 
-          domain: metadata.domain,
-          image: metadata.image 
-        },
+        metadata: {},
         clickCount: 0,
         lastAccessed: Date.now(),
         createdAt: Date.now(),
         updatedAt: Date.now()
       };
+      
+      // Build metadata object without undefined values
+      if (metadata.domain) {
+        newBookmarkData.metadata.domain = metadata.domain;
+      }
+      if (metadata.image) {
+        newBookmarkData.metadata.image = metadata.image;
+      }
+      
+      // Only add categoryId if it's defined
+      if (selectedCategoryForNewBookmark) {
+        newBookmarkData.categoryId = selectedCategoryForNewBookmark;
+      }
       
       console.log('Saving bookmark to Firestore...');
       const bookmarkId = await saveBookmarkToFirestore(newBookmarkData);
@@ -186,7 +250,8 @@ const App: React.FC = () => {
       alert('Bookmark saved successfully!');
     } catch (err) {
       console.error('Error adding bookmark:', err);
-      alert(`Error adding bookmark: ${err instanceof Error ? err.message : 'Please check the URL and try again.'}`);
+      const errorMessage = err instanceof Error ? err.message : 'Please check the URL and try again.';
+      alert(`Error adding bookmark: ${errorMessage}`);
     } finally {
       setIsProcessing(false);
     }
@@ -198,7 +263,15 @@ const App: React.FC = () => {
       setBookmarks(prev => prev.filter(b => b.id !== id));
     } catch (error) {
       console.error('Error deleting bookmark:', error);
-      alert('Error deleting bookmark. Please try again.');
+      
+      const errorMessage = error instanceof Error ? error.message : 'Please try again.';
+      const isPermissionError = errorMessage.includes('Permission denied');
+      
+      alert(
+        isPermissionError
+          ? '🔒 Permission Denied\n\nYour Firestore security rules need to be updated to allow delete operations.\n\nPlease check the browser console (F12) for detailed instructions, or see FIRESTORE_RULES.md in your project.'
+          : `Error deleting bookmark. ${errorMessage}`
+      );
     }
   };
 
@@ -272,7 +345,15 @@ const App: React.FC = () => {
       setBookmarks(prev => prev.filter(b => !ids.includes(b.id)));
     } catch (error) {
       console.error('Error bulk deleting:', error);
-      alert('Error deleting bookmarks. Please try again.');
+      
+      const errorMessage = error instanceof Error ? error.message : 'Please try again.';
+      const isPermissionError = errorMessage.includes('Permission denied');
+      
+      alert(
+        isPermissionError
+          ? '🔒 Permission Denied\n\nYour Firestore security rules need to be updated to allow delete operations.\n\nPlease check the browser console (F12) for detailed instructions, or see FIRESTORE_RULES.md in your project.'
+          : `Error deleting bookmarks. ${errorMessage}`
+      );
     }
   };
 
@@ -326,6 +407,134 @@ const App: React.FC = () => {
     
     await Promise.all(updates);
     setBookmarks(prev => prev.map(b => ids.includes(b.id) ? { ...b, isArchived } : b));
+  };
+
+  const handleAutoTag = async (ids: string[]) => {
+    console.log(`Auto-tagging ${ids.length} bookmarks...`);
+    
+    try {
+      const updates = ids.map(async (id) => {
+        try {
+          const bookmark = bookmarks.find(b => b.id === id);
+          if (!bookmark) {
+            console.error(`Bookmark not found: ${id}`);
+            return;
+          }
+
+          console.log(`Fetching metadata for: ${bookmark.url}`);
+          const metadata = await fetchUrlMetadata(bookmark.url);
+          
+          // Merge AI-generated tags with existing tags (remove duplicates)
+          const existingTags = bookmark.tags || [];
+          const newTags = metadata.tags || [];
+          const mergedTags = Array.from(new Set([...existingTags, ...newTags]));
+          
+          console.log(`Found tags for ${bookmark.title}:`, newTags);
+          
+          await updateBookmark(id, { 
+            tags: mergedTags, 
+            updatedAt: Date.now() 
+          });
+          
+          return { id, tags: mergedTags };
+        } catch (error) {
+          console.error(`Error auto-tagging bookmark ${id}:`, error);
+          return null;
+        }
+      });
+      
+      const results = await Promise.all(updates);
+      
+      // Update state with new tags
+      setBookmarks(prev => prev.map(b => {
+        const result = results.find(r => r?.id === b.id);
+        return result ? { ...b, tags: result.tags, updatedAt: Date.now() } : b;
+      }));
+      
+      const successCount = results.filter(r => r !== null).length;
+      console.log(`Auto-tagging complete: ${successCount}/${ids.length} successful`);
+    } catch (error: any) {
+      console.error('Auto-tag error:', error);
+      if (error.message?.includes('No Gemini API key')) {
+        alert('⚠️ Gemini API Key Required\n\nPlease configure your Gemini API key in Settings to use AI features.\n\nGo to Settings → Gemini API Key section to add your key.');
+      } else {
+        throw error; // Re-throw for BulkEdit to handle
+      }
+    }
+  };
+
+  const handleAutoCategorize = async (ids: string[]) => {
+    console.log(`Auto-categorizing ${ids.length} bookmarks...`);
+    
+    try {
+      if (categories.length === 0) {
+        console.error('No categories available for auto-categorization');
+        return;
+      }
+      
+      // Create simplified category list for AI
+      const availableCategories = categories.map(c => ({
+        id: c.id,
+        name: c.name
+      }));
+      
+      const updates = ids.map(async (id) => {
+        try {
+          const bookmark = bookmarks.find(b => b.id === id);
+          if (!bookmark) {
+            console.error(`Bookmark not found: ${id}`);
+            return null;
+          }
+
+          console.log(`Suggesting category for: ${bookmark.title}`);
+          const suggestion = await suggestCategory(bookmark, availableCategories);
+          
+          console.log(`Category suggestion for "${bookmark.title}":`, {
+            category: suggestion.categoryName,
+            confidence: suggestion.confidence,
+            reason: suggestion.reason
+          });
+          
+          // Only update if we got a valid category ID
+          if (suggestion.categoryId) {
+            await updateBookmark(id, { 
+              categoryId: suggestion.categoryId,
+              updatedAt: Date.now() 
+            });
+            
+            return { id, categoryId: suggestion.categoryId, categoryName: suggestion.categoryName };
+          } else {
+            console.log(`No matching category found for "${bookmark.title}", skipping...`);
+            return null;
+          }
+        } catch (error) {
+          console.error(`Error auto-categorizing bookmark ${id}:`, error);
+          return null;
+        }
+      });
+      
+      const results = await Promise.all(updates);
+      
+      // Update state with new categories
+      setBookmarks(prev => prev.map(b => {
+        const result = results.find(r => r?.id === b.id);
+        return result ? { ...b, categoryId: result.categoryId, updatedAt: Date.now() } : b;
+      }));
+      
+      const successCount = results.filter(r => r !== null).length;
+      console.log(`Auto-categorization complete: ${successCount}/${ids.length} successful`);
+      
+      if (successCount > 0) {
+        console.log('Categorized bookmarks:', results.filter(r => r !== null).map(r => `"${r?.categoryName}"`).join(', '));
+      }
+    } catch (error: any) {
+      console.error('Auto-categorize error:', error);
+      if (error.message?.includes('No Gemini API key')) {
+        alert('⚠️ Gemini API Key Required\n\nPlease configure your Gemini API key in Settings to use AI features.\n\nGo to Settings → Gemini API Key section to add your key.');
+      } else {
+        throw error; // Re-throw for BulkEdit to handle
+      }
+    }
   };
 
   const handleCategoryClick = (categoryId: string) => {
@@ -411,53 +620,123 @@ const App: React.FC = () => {
     }
   };
 
-  const handleImportBookmarks = async (importedBookmarks: Partial<Bookmark>[]) => {
-    if (!currentUser) return;
-
-    try {
-      const successfulImports: Bookmark[] = [];
-      
-      for (const bookmark of importedBookmarks) {
-        try {
-          // Try to fetch metadata for each bookmark
-          let metadata = null;
-          try {
-            metadata = await fetchUrlMetadata(bookmark.url || '');
-          } catch (error) {
-            console.log('Failed to fetch metadata for:', bookmark.url);
-          }
-
-          const bookmarkData = {
-            userId: currentUser.uid,
-            url: bookmark.url || '',
-            title: bookmark.title || metadata?.title || bookmark.url || 'Untitled',
-            description: bookmark.description || metadata?.description || '',
-            tags: bookmark.tags || metadata?.tags || [],
-            categoryId: bookmark.categoryId,
-            isFavorite: bookmark.isFavorite || false,
-            isArchived: bookmark.isArchived || false,
-            favicon: metadata?.favicon || '',
-            domain: metadata?.domain || new URL(bookmark.url || '').hostname,
-            createdAt: Date.now(),
-            lastAccessed: Date.now(),
-            clickCount: 0
-          };
-
-          const bookmarkId = await saveBookmarkToFirestore(bookmarkData);
-          successfulImports.push({ id: bookmarkId, ...bookmarkData });
-        } catch (error) {
-          console.error('Failed to import bookmark:', bookmark.url, error);
-        }
-      }
-
-      // Add successful imports to state
-      if (successfulImports.length > 0) {
-        setBookmarks(prev => [...prev, ...successfulImports]);
-      }
-    } catch (error) {
-      console.error('Error during import:', error);
-      throw error;
+  const handleImportBookmarks = async (importedBookmarks: Partial<Bookmark>[], onProgress?: (current: number, total: number) => void): Promise<{ success: number; failed: number }> => {
+    if (!currentUser) {
+      throw new Error('No user logged in');
     }
+
+    const successfulImports: Bookmark[] = [];
+    const failedImports: string[] = [];
+    const total = importedBookmarks.length;
+    
+    // Helper function to safely extract domain from URL
+    const extractDomain = (url: string): string => {
+      try {
+        const urlObj = new URL(url);
+        return urlObj.hostname;
+      } catch (error) {
+        console.error('Invalid URL:', url);
+        return '';
+      }
+    };
+    
+    for (let i = 0; i < importedBookmarks.length; i++) {
+      const bookmark = importedBookmarks[i];
+      
+      // Report progress
+      if (onProgress) {
+        onProgress(i, total);
+      }
+      
+      try {
+        // Validate URL
+        if (!bookmark.url || bookmark.url.trim() === '') {
+          console.error('Empty URL, skipping bookmark');
+          failedImports.push('Empty URL');
+          continue;
+        }
+
+        const domain = extractDomain(bookmark.url);
+        if (!domain) {
+          console.error('Invalid URL, skipping:', bookmark.url);
+          failedImports.push(bookmark.url);
+          continue;
+        }
+
+        // Try to fetch metadata for each bookmark (non-blocking, requires API key)
+        let metadata = null;
+        try {
+          console.log('Fetching AI metadata for:', bookmark.url);
+          metadata = await fetchUrlMetadata(bookmark.url);
+          console.log('AI metadata fetched for:', bookmark.url);
+        } catch (error: any) {
+          console.log('AI metadata unavailable for:', bookmark.url, error.message);
+          // Continue without AI metadata - will use basic fallback
+        }
+
+        const bookmarkData: any = {
+          userId: currentUser.uid,
+          url: bookmark.url,
+          title: bookmark.title || metadata?.title || bookmark.url || 'Untitled',
+          description: bookmark.description || metadata?.description || '',
+          tags: bookmark.tags || metadata?.tags || [],
+          isFavorite: bookmark.isFavorite || false,
+          isArchived: bookmark.isArchived || false,
+          favicon: metadata?.favicon || `https://www.google.com/s2/favicons?domain=${domain}&sz=64`,
+          clickCount: 0,
+          createdAt: Date.now(),
+          lastAccessed: Date.now(),
+          updatedAt: Date.now(),
+          metadata: {}
+        };
+        
+        // Build metadata object without undefined values
+        if (metadata?.domain || domain) {
+          bookmarkData.metadata.domain = metadata?.domain || domain;
+        }
+        if (metadata?.image) {
+          bookmarkData.metadata.image = metadata.image;
+        }
+        if (metadata?.author) {
+          bookmarkData.metadata.author = metadata.author;
+        }
+        
+        // Only add categoryId if it's defined
+        if (bookmark.categoryId) {
+          bookmarkData.categoryId = bookmark.categoryId;
+        }
+
+        console.log('Saving bookmark to Firestore:', bookmarkData);
+        const bookmarkId = await saveBookmarkToFirestore(bookmarkData);
+        console.log('Bookmark saved with ID:', bookmarkId);
+        
+        successfulImports.push({ id: bookmarkId, ...bookmarkData });
+      } catch (error) {
+        console.error('Failed to import bookmark:', bookmark.url, error);
+        failedImports.push(bookmark.url || 'Unknown URL');
+      }
+    }
+
+    // Report final progress
+    if (onProgress) {
+      onProgress(total, total);
+    }
+
+    // Add successful imports to state
+    if (successfulImports.length > 0) {
+      setBookmarks(prev => [...prev, ...successfulImports]);
+    }
+    
+    // Log results
+    console.log(`Import complete: ${successfulImports.length} succeeded, ${failedImports.length} failed`);
+    if (failedImports.length > 0) {
+      console.log('Failed URLs:', failedImports);
+    }
+
+    return {
+      success: successfulImports.length,
+      failed: failedImports.length
+    };
   };
 
   if (loading) {
@@ -498,6 +777,14 @@ const App: React.FC = () => {
 
       <main className="flex-1 ml-64 p-8">
         <div className="max-w-6xl mx-auto">
+          {/* Loading indicator for bookmarks */}
+          {isLoadingBookmarks && currentUser && (
+            <div className="fixed top-4 right-4 bg-blue-600 text-white px-4 py-2 rounded-lg shadow-lg flex items-center gap-2 z-50">
+              <Loader2 size={16} className="animate-spin" />
+              <span className="text-sm font-medium">Loading bookmarks...</span>
+            </div>
+          )}
+          
           {currentPage === 'dashboard' && (
             <Dashboard 
               bookmarks={bookmarks}
@@ -530,6 +817,8 @@ const App: React.FC = () => {
               onUpdateCategory={handleBulkUpdateCategory}
               onToggleFavorite={handleBulkToggleFavorite}
               onToggleArchive={handleBulkToggleArchive}
+              onAutoTag={handleAutoTag}
+              onAutoCategorize={handleAutoCategorize}
             />
           )}
           {currentPage === 'settings' && (

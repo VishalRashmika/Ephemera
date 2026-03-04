@@ -1,10 +1,15 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { 
   CheckSquare, 
   Square,
   Trash2,
   Star,
-  Archive
+  Archive,
+  Search,
+  X,
+  Sparkles,
+  Loader2,
+  FolderTree
 } from 'lucide-react';
 import { Bookmark, Category } from '../types';
 
@@ -16,6 +21,8 @@ interface BulkEditProps {
   onUpdateCategory: (ids: string[], categoryId: string | undefined) => void;
   onToggleFavorite: (ids: string[], isFavorite: boolean) => void;
   onToggleArchive: (ids: string[], isArchived: boolean) => void;
+  onAutoTag: (ids: string[]) => Promise<void>;
+  onAutoCategorize: (ids: string[]) => Promise<void>;
 }
 
 const BulkEdit: React.FC<BulkEditProps> = ({ 
@@ -25,11 +32,33 @@ const BulkEdit: React.FC<BulkEditProps> = ({
   onUpdateTags,
   onUpdateCategory,
   onToggleFavorite,
-  onToggleArchive
+  onToggleArchive,
+  onAutoTag,
+  onAutoCategorize
 }) => {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkTags, setBulkTags] = useState('');
   const [bulkCategory, setBulkCategory] = useState<string>('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isAutoTagging, setIsAutoTagging] = useState(false);
+  const [isAutoCategorizing, setIsAutoCategorizing] = useState(false);
+
+  // Filter bookmarks based on search query
+  const filteredBookmarks = useMemo(() => {
+    if (!searchQuery.trim()) {
+      return bookmarks;
+    }
+
+    const query = searchQuery.toLowerCase();
+    return bookmarks.filter(bookmark => {
+      const titleMatch = bookmark.title.toLowerCase().includes(query);
+      const urlMatch = bookmark.url.toLowerCase().includes(query);
+      const descriptionMatch = bookmark.description?.toLowerCase().includes(query);
+      const tagsMatch = bookmark.tags.some(tag => tag.toLowerCase().includes(query));
+      
+      return titleMatch || urlMatch || descriptionMatch || tagsMatch;
+    });
+  }, [bookmarks, searchQuery]);
 
   const toggleBookmark = (bookmarkId: string) => {
     const newSelected = new Set(selectedIds);
@@ -42,10 +71,10 @@ const BulkEdit: React.FC<BulkEditProps> = ({
   };
 
   const toggleSelectAll = () => {
-    if (selectedIds.size === bookmarks.length) {
+    if (selectedIds.size === filteredBookmarks.length && filteredBookmarks.length > 0) {
       setSelectedIds(new Set());
     } else {
-      setSelectedIds(new Set(bookmarks.map(b => b.id)));
+      setSelectedIds(new Set(filteredBookmarks.map(b => b.id)));
     }
   };
 
@@ -86,6 +115,53 @@ const BulkEdit: React.FC<BulkEditProps> = ({
     setSelectedIds(new Set());
   };
 
+  const handleAutoTag = async () => {
+    if (selectedIds.size === 0) return;
+    
+    const confirmed = confirm(
+      `Auto-tag ${selectedIds.size} selected bookmark(s) using AI?\n\nThis will fetch metadata and add relevant tags to each bookmark.`
+    );
+    
+    if (!confirmed) return;
+    
+    setIsAutoTagging(true);
+    try {
+      await onAutoTag(Array.from(selectedIds));
+      setSelectedIds(new Set());
+    } catch (error) {
+      console.error('Auto-tagging failed:', error);
+      alert('Failed to auto-tag bookmarks. Check console for details.');
+    } finally {
+      setIsAutoTagging(false);
+    }
+  };
+
+  const handleAutoCategorize = async () => {
+    if (selectedIds.size === 0) return;
+    
+    if (categories.length === 0) {
+      alert('No categories available. Please create some categories first.');
+      return;
+    }
+    
+    const confirmed = confirm(
+      `Auto-categorize ${selectedIds.size} selected bookmark(s) using AI?\n\nThis will analyze each bookmark and assign it to the most appropriate category from your existing categories.`
+    );
+    
+    if (!confirmed) return;
+    
+    setIsAutoCategorizing(true);
+    try {
+      await onAutoCategorize(Array.from(selectedIds));
+      setSelectedIds(new Set());
+    } catch (error) {
+      console.error('Auto-categorization failed:', error);
+      alert('Failed to auto-categorize bookmarks. Check console for details.');
+    } finally {
+      setIsAutoCategorizing(false);
+    }
+  };
+
   const getCategoryName = (categoryId: string | undefined) => {
     if (!categoryId) return 'Uncategorized';
     const category = categories.find(c => c.id === categoryId);
@@ -100,6 +176,36 @@ const BulkEdit: React.FC<BulkEditProps> = ({
           Manage and edit multiple bookmarks at once
         </p>
       </header>
+
+      {/* Search/Filter Bar */}
+      <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg p-4">
+        <div className="flex items-center gap-3">
+          <div className="flex-1 relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+            <input
+              type="text"
+              placeholder="Search by title, URL, description, or tags..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-10 pr-10 py-2.5 border border-gray-300 dark:border-gray-700 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white dark:bg-gray-800 text-sm"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                title="Clear search"
+              >
+                <X size={18} />
+              </button>
+            )}
+          </div>
+          {searchQuery && (
+            <div className="text-sm text-gray-600 dark:text-gray-400 whitespace-nowrap">
+              {filteredBookmarks.length} of {bookmarks.length} bookmark{bookmarks.length !== 1 ? 's' : ''}
+            </div>
+          )}
+        </div>
+      </div>
 
       {/* Bulk Actions Bar */}
       {selectedIds.size > 0 && (
@@ -125,6 +231,44 @@ const BulkEdit: React.FC<BulkEditProps> = ({
                 className="px-3 py-1.5 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors"
               >
                 Update Tags
+              </button>
+              
+              <button
+                onClick={handleAutoTag}
+                disabled={isAutoTagging}
+                className="px-3 py-1.5 bg-purple-600 text-white text-sm rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
+                title="Auto-tag selected bookmarks using AI"
+              >
+                {isAutoTagging ? (
+                  <>
+                    <Loader2 size={14} className="animate-spin" />
+                    <span>Tagging...</span>
+                  </>
+                ) : (
+                  <>
+                    <Sparkles size={14} />
+                    <span>Auto-tag</span>
+                  </>
+                )}
+              </button>
+              
+              <button
+                onClick={handleAutoCategorize}
+                disabled={isAutoCategorizing}
+                className="px-3 py-1.5 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
+                title="Auto-categorize selected bookmarks using AI"
+              >
+                {isAutoCategorizing ? (
+                  <>
+                    <Loader2 size={14} className="animate-spin" />
+                    <span>Categorizing...</span>
+                  </>
+                ) : (
+                  <>
+                    <FolderTree size={14} />
+                    <span>Auto-categorize</span>
+                  </>
+                )}
               </button>
               
               <select
@@ -179,8 +323,8 @@ const BulkEdit: React.FC<BulkEditProps> = ({
           <thead className="bg-gray-100 border-b-2 border-gray-400 dark:bg-gray-900 dark:border-gray-600">
             <tr>
               <th className="w-10 px-3 py-2 text-left">
-                <button onClick={toggleSelectAll}>
-                  {selectedIds.size === bookmarks.length && bookmarks.length > 0 ? (
+                <button onClick={toggleSelectAll} title="Select all filtered bookmarks">
+                  {selectedIds.size === filteredBookmarks.length && filteredBookmarks.length > 0 ? (
                     <CheckSquare size={14} className="text-blue-600" />
                   ) : (
                     <Square size={14} className="text-gray-500" />
@@ -195,14 +339,14 @@ const BulkEdit: React.FC<BulkEditProps> = ({
             </tr>
           </thead>
           <tbody className="bg-white dark:bg-black font-mono text-xs">
-            {bookmarks.length === 0 ? (
+            {filteredBookmarks.length === 0 ? (
               <tr>
                 <td colSpan={6} className="px-3 py-12 text-center text-gray-500">
-                  No bookmarks found.
+                  {searchQuery ? `No bookmarks match "${searchQuery}"` : 'No bookmarks found.'}
                 </td>
               </tr>
             ) : (
-              bookmarks.map((bookmark, index) => {
+              filteredBookmarks.map((bookmark, index) => {
                 const isSelected = selectedIds.has(bookmark.id);
                 
                 return (
@@ -222,8 +366,13 @@ const BulkEdit: React.FC<BulkEditProps> = ({
                       </button>
                     </td>
                     <td className="px-3 py-2">
-                      <div className="truncate max-w-md" title={bookmark.title}>
-                        {bookmark.title}
+                      <div className="max-w-md">
+                        <div className="truncate font-medium" title={bookmark.title}>
+                          {bookmark.title}
+                        </div>
+                        <div className="truncate text-gray-500 dark:text-gray-500 text-[10px]" title={bookmark.url}>
+                          {bookmark.url}
+                        </div>
                       </div>
                     </td>
                     <td className="px-3 py-2 text-gray-600 dark:text-gray-400">
@@ -252,7 +401,15 @@ const BulkEdit: React.FC<BulkEditProps> = ({
 
       {bookmarks.length > 0 && (
         <div className="font-mono text-xs text-gray-500">
-          {bookmarks.length} row{bookmarks.length !== 1 ? 's' : ''} | {selectedIds.size} selected
+          {searchQuery ? (
+            <>
+              {filteredBookmarks.length} of {bookmarks.length} bookmark{bookmarks.length !== 1 ? 's' : ''} | {selectedIds.size} selected
+            </>
+          ) : (
+            <>
+              {bookmarks.length} row{bookmarks.length !== 1 ? 's' : ''} | {selectedIds.size} selected
+            </>
+          )}
         </div>
       )}
     </div>
